@@ -1,298 +1,351 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transcribe — Transcribe & Sentiment Analysis</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Transcribe — AI Speech & Sentiment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cabinet+Grotesk:wght@400;500;700;800;900&family=Satoshi:wght@300;400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <!-- Background particles -->
-    <div class="bg-layer">
-        <div class="orb orb-1"></div>
-        <div class="orb orb-2"></div>
-        <div class="orb orb-3"></div>
-        <div class="grid-overlay"></div>
+
+<div class="noise"></div>
+
+<!-- FLOATING BG BLOBS -->
+<div class="blobs">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+  <div class="blob b4"></div>
+</div>
+
+<!-- HEADER -->
+<header class="hdr">
+  <div class="hdr-left">
+    <div class="logo-wrap">
+      <div class="logo-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="currentColor" opacity=".15"/>
+          <path d="M9 9a3 3 0 016 0v3a3 3 0 01-6 0V9z" fill="currentColor"/>
+          <path d="M6 12a6 6 0 0012 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+          <line x1="12" y1="18" x2="12" y2="21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="9" y1="21" x2="15" y2="21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <span class="logo-name">Trans<em>cribe</em></span>
+    </div>
+  </div>
+
+  <nav class="tab-nav">
+    <button class="tnav active" data-tab="transcribe">
+      <span class="tnav-icon">🎙️</span><span class="tnav-txt">Transcribe</span>
+    </button>
+    <button class="tnav" data-tab="analyze">
+      <span class="tnav-icon">🧠</span><span class="tnav-txt">Analyze</span>
+    </button>
+    <button class="tnav" data-tab="history">
+      <span class="tnav-icon">📋</span><span class="tnav-txt">History</span>
+    </button>
+    <div class="tnav-slider"></div>
+  </nav>
+
+  <div class="hdr-badge">
+    <span class="pulse-dot"></span> AI Live
+  </div>
+</header>
+
+<!-- ═══════════════════════════════ TRANSCRIBE TAB ═══════════════════════════════ -->
+<section class="tab-pane active" id="tab-transcribe">
+  <div class="page-hero">
+    <div class="hero-label">🎤 Speech Intelligence</div>
+    <h1 class="hero-h1">Transcribe &amp; <span class="shine-text">Understand</span></h1>
+    <p class="hero-sub">Speak into your mic or upload audio — get real text + emotional insights</p>
+  </div>
+
+  <div class="t-grid">
+    <!-- LEFT: INPUT -->
+    <div class="glass-card input-card">
+      <div class="card-badge">Audio Input</div>
+
+      <!-- MIC SECTION -->
+      <div class="mic-section">
+        <div class="mic-orbit" id="micOrbit">
+          <div class="orbit-ring or1"></div>
+          <div class="orbit-ring or2"></div>
+          <div class="orbit-ring or3"></div>
+          <button class="mic-btn" id="micBtn">
+            <svg class="icon-mic" width="30" height="30" viewBox="0 0 24 24" fill="none">
+              <rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/>
+              <path d="M5 10a7 7 0 0014 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+              <line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <line x1="8" y1="21" x2="16" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <svg class="icon-stop" width="26" height="26" viewBox="0 0 24 24" fill="none" style="display:none">
+              <rect x="5" y="5" width="14" height="14" rx="3" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="mic-status-wrap">
+          <div class="mic-status-text" id="micStatusText">Tap to start recording</div>
+          <div class="mic-timer hidden" id="micTimer">00:00</div>
+        </div>
+
+        <!-- live transcript while recording -->
+        <div class="live-transcript hidden" id="liveTranscript">
+          <div class="live-label">🔴 Live transcript</div>
+          <div class="live-text" id="liveText">Listening…</div>
+        </div>
+
+        <!-- waveform -->
+        <canvas id="waveCanvas" class="wave-canvas" width="500" height="56"></canvas>
+      </div>
+
+      <div class="or-divider"><span>or upload file</span></div>
+
+      <!-- UPLOAD -->
+      <div class="upload-box" id="uploadBox">
+        <input type="file" id="fileInput" accept="audio/*" hidden>
+        <div class="upload-ico">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+            <path d="M12 15V4M8 8l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <p class="upload-title">Drop audio file</p>
+        <p class="upload-hint">MP3 · WAV · M4A · OGG · max 50MB</p>
+        <button class="btn-soft" onclick="document.getElementById('fileInput').click()">Browse Files</button>
+      </div>
+
+      <div class="audio-chip hidden" id="audioChip">
+        <div class="achip-ico">♪</div>
+        <div class="achip-info">
+          <div class="achip-name" id="achipName">file.mp3</div>
+          <div class="achip-size" id="achipSize">—</div>
+        </div>
+        <audio id="audioEl" controls class="achip-audio"></audio>
+      </div>
+
+      <button class="btn-primary" id="transcribeBtn" disabled>
+        <span id="tBtnText">Transcribe Audio</span>
+        <span id="tBtnLoader" class="btn-dots hidden"><span></span><span></span><span></span></span>
+      </button>
     </div>
 
-    <!-- Header -->
-    <header class="header">
-        <div class="logo">
-            <div class="logo-icon">
-                <svg viewBox="0 0 32 32" fill="none">
-                    <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
-                    <path d="M10 16c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    <circle cx="16" cy="20" r="3" fill="currentColor"/>
-                    <path d="M7 20h2M23 20h2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                </svg>
+    <!-- RIGHT: OUTPUT -->
+    <div class="glass-card output-card" id="outputCard">
+      <div class="card-badge" id="outBadge">Result</div>
+
+      <div class="transcript-box" id="transcriptBox">
+        <div class="empty-transcript">
+          <div class="empty-art">
+            <div class="empty-lines">
+              <div class="el el1"></div><div class="el el2"></div>
+              <div class="el el3"></div><div class="el el4"></div>
             </div>
-            <span class="logo-text">Trans<span class="accent">cribe</span></span>
+          </div>
+          <p>Your transcription appears here</p>
+          <span>Start recording or upload an audio file</span>
         </div>
-        <nav class="nav-pills">
-            <button class="nav-pill active" data-tab="transcribe">Transcribe</button>
-            <button class="nav-pill" data-tab="analyze">Analyze Text</button>
-            <button class="nav-pill" data-tab="history">History</button>
-        </nav>
-        <div class="header-badge">
-            <span class="status-dot"></span>
-            <span>Live AI</span>
+      </div>
+
+      <div class="out-actions hidden" id="outActions">
+        <button class="act-btn" id="copyBtn">
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><rect x="7" y="7" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 13V5a2 2 0 012-2h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Copy
+        </button>
+        <button class="act-btn" id="dlBtn">
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M10 3v10M6 9l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 16h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Download
+        </button>
+        <button class="act-btn accent-btn" id="toAnalyzeBtn">
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 100 14A7 7 0 0010 3z" stroke="currentColor" stroke-width="1.6"/><path d="M10 7v3l2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Deep Analyze
+        </button>
+      </div>
+
+      <!-- Quick sentiment strip (shows after transcription) -->
+      <div class="quick-sentiment hidden" id="quickSentiment">
+        <div class="qs-emoji" id="qsEmoji">😐</div>
+        <div class="qs-info">
+          <div class="qs-label" id="qsLabel">Neutral</div>
+          <div class="qs-sub">Quick sentiment</div>
         </div>
-    </header>
+        <div class="qs-bar-wrap">
+          <div class="qs-bar">
+            <div class="qs-fill" id="qsFill"></div>
+          </div>
+          <div class="qs-score" id="qsScore">0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
-    <!-- Main -->
-    <main class="main">
+<!-- ═══════════════════════════════ ANALYZE TAB ═══════════════════════════════ -->
+<section class="tab-pane" id="tab-analyze">
+  <div class="page-hero">
+    <div class="hero-label">🧠 Sentiment Engine</div>
+    <h1 class="hero-h1">Analyze <span class="shine-text">Any Text</span></h1>
+    <p class="hero-sub">Paste any text — emails, reviews, speeches — and reveal the emotions within</p>
+  </div>
 
-        <!-- ── TAB: TRANSCRIBE ── -->
-        <section class="tab-content active" id="tab-transcribe">
-            <div class="hero-text">
-                <h1>Transcribe & <span class="gradient-text">Understand</span></h1>
-                <p>Record audio or upload a file — get instant transcription with deep sentiment intelligence.</p>
+  <div class="a-layout">
+    <!-- Input box -->
+    <div class="glass-card a-input-card">
+      <div class="a-input-header">
+        <span class="card-badge">Text Input</span>
+        <span class="wc-badge" id="wcBadge">0 words</span>
+      </div>
+      <textarea id="textInput" class="t-area" placeholder="Paste or type any text here…&#10;&#10;Try: emails, reviews, speeches, customer feedback, social media posts, diary entries…"></textarea>
+      <div class="a-input-footer">
+        <div class="sample-btns">
+          <button class="btn-soft" id="samplePos">😊 Positive sample</button>
+          <button class="btn-soft" id="sampleNeg">😟 Negative sample</button>
+          <button class="btn-soft" id="sampleNeu">😐 Neutral sample</button>
+        </div>
+        <div class="a-footer-right">
+          <button class="btn-ghost" id="clearBtn">Clear</button>
+          <button class="btn-primary" id="analyzeBtn">
+            <span id="aBtnText">Analyze Sentiment</span>
+            <span id="aBtnLoader" class="btn-dots hidden"><span></span><span></span><span></span></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="resultsWrap" class="results-wrap hidden">
+
+      <!-- BIG SENTIMENT CARD -->
+      <div class="glass-card sentiment-big-card" id="sentBigCard">
+        <div class="sbc-left">
+          <div class="sbc-emoji" id="sbcEmoji">😐</div>
+          <div>
+            <div class="sbc-label" id="sbcLabel">Neutral</div>
+            <div class="sbc-sub">Overall Sentiment</div>
+          </div>
+        </div>
+        <div class="sbc-right">
+          <div class="arc-wrap">
+            <svg class="arc-svg" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(0,0,0,.06)" stroke-width="8"/>
+              <circle cx="50" cy="50" r="40" fill="none" stroke="var(--arc-color,#6BAB90)" stroke-width="8"
+                stroke-dasharray="251" stroke-dashoffset="251"
+                stroke-linecap="round" id="arcCircle" transform="rotate(-90 50 50)"/>
+            </svg>
+            <span class="arc-num" id="arcNum">0</span>
+          </div>
+        </div>
+
+        <!-- Polarity bar -->
+        <div class="polar-wrap">
+          <span class="polar-lbl neg">Negative</span>
+          <div class="polar-track">
+            <div class="polar-gradient"></div>
+            <div class="polar-thumb" id="polarThumb"></div>
+          </div>
+          <span class="polar-lbl pos">Positive</span>
+        </div>
+
+        <!-- Stat pills -->
+        <div class="stat-pills">
+          <div class="sp sp-pos">
+            <strong id="spPos">0</strong>
+            <span>Positive signals</span>
+          </div>
+          <div class="sp sp-neg">
+            <strong id="spNeg">0</strong>
+            <span>Negative signals</span>
+          </div>
+          <div class="sp sp-neu">
+            <strong id="spWords">0</strong>
+            <span>Total words</span>
+          </div>
+          <div class="sp sp-conf">
+            <strong id="spConf">0%</strong>
+            <span>Confidence</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM GRID -->
+      <div class="results-grid">
+
+        <!-- Emotions -->
+        <div class="glass-card emo-card">
+          <div class="mini-hdr">
+            <span class="card-badge">Emotions</span>
+          </div>
+          <div class="emo-list" id="emoList">
+            <div class="emo-empty">No strong emotions detected</div>
+          </div>
+        </div>
+
+        <!-- Key Phrases -->
+        <div class="glass-card kp-card">
+          <div class="mini-hdr"><span class="card-badge">Key Phrases</span></div>
+          <div class="kp-tags" id="kpTags"><span class="kp-empty">—</span></div>
+          <div class="mini-hdr" style="margin-top:18px"><span class="card-badge">Highlighted Words</span></div>
+          <div class="hw-row">
+            <div>
+              <div class="hw-lbl pos-lbl">✅ Positive</div>
+              <div class="hw-tags" id="hwPos"></div>
             </div>
-
-            <div class="two-col">
-                <!-- Input Panel -->
-                <div class="card input-card">
-                    <div class="card-header">
-                        <h2>Audio Input</h2>
-                        <span class="tag">Step 1</span>
-                    </div>
-
-                    <!-- Record section -->
-                    <div class="record-section">
-                        <div class="record-visual" id="recordVisual">
-                            <div class="record-rings">
-                                <div class="ring r1"></div>
-                                <div class="ring r2"></div>
-                                <div class="ring r3"></div>
-                            </div>
-                            <button class="record-btn" id="recordBtn">
-                                <svg class="mic-icon" viewBox="0 0 24 24" fill="none">
-                                    <rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/>
-                                    <path d="M5 10c0 3.9 3.1 7 7 7s7-3.1 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                    <line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                    <line x1="8" y1="21" x2="16" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                </svg>
-                                <svg class="stop-icon hidden" viewBox="0 0 24 24" fill="none">
-                                    <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>
-                                </svg>
-                            </button>
-                        </div>
-                        <div class="record-status" id="recordStatus">
-                            <span id="statusText">Click to start recording</span>
-                            <span class="timer hidden" id="timer">00:00</span>
-                        </div>
-
-                        <!-- Waveform -->
-                        <canvas class="waveform" id="waveform" width="400" height="60"></canvas>
-                    </div>
-
-                    <div class="divider-or"><span>or</span></div>
-
-                    <!-- Upload -->
-                    <div class="upload-zone" id="uploadZone">
-                        <input type="file" id="fileInput" accept="audio/*" hidden>
-                        <div class="upload-icon">
-                            <svg viewBox="0 0 24 24" fill="none">
-                                <path d="M12 15V3M12 3L8 7M12 3L16 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                <path d="M3 15v4a2 2 0 002 2h14a2 2 0 002-2v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                            </svg>
-                        </div>
-                        <p class="upload-text">Drop audio file here</p>
-                        <p class="upload-sub">MP3, WAV, M4A, OGG · Max 50MB</p>
-                        <button class="btn-outline" onclick="document.getElementById('fileInput').click()">Browse Files</button>
-                    </div>
-
-                    <div class="audio-preview hidden" id="audioPreview">
-                        <div class="audio-info">
-                            <div class="audio-icon">♪</div>
-                            <div>
-                                <div class="audio-name" id="audioName">file.mp3</div>
-                                <div class="audio-size" id="audioSize">0 KB</div>
-                            </div>
-                        </div>
-                        <audio controls id="audioPlayer" class="audio-player"></audio>
-                    </div>
-
-                    <button class="btn-primary" id="transcribeBtn" disabled>
-                        <span class="btn-text">Transcribe Audio</span>
-                        <span class="btn-loader hidden">
-                            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-                        </span>
-                    </button>
-                </div>
-
-                <!-- Output Panel -->
-                <div class="card output-card" id="outputCard">
-                    <div class="card-header">
-                        <h2>Transcription</h2>
-                        <span class="tag" id="outputTag">Waiting...</span>
-                    </div>
-                    <div class="transcription-area" id="transcriptionArea">
-                        <div class="empty-state">
-                            <div class="empty-icon">
-                                <svg viewBox="0 0 48 48" fill="none">
-                                    <circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2" opacity="0.3"/>
-                                    <path d="M16 24h16M16 18h10M16 30h12" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
-                                </svg>
-                            </div>
-                            <p>Your transcription will appear here</p>
-                        </div>
-                    </div>
-                    <div class="transcription-actions hidden" id="transcriptionActions">
-                        <button class="action-btn" id="copyBtn" title="Copy text">
-                            <svg viewBox="0 0 20 20" fill="none"><rect x="7" y="7" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 13V5a2 2 0 012-2h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                            Copy
-                        </button>
-                        <button class="action-btn" id="downloadBtn" title="Download">
-                            <svg viewBox="0 0 20 20" fill="none"><path d="M10 3v10M6 9l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                            Download
-                        </button>
-                        <button class="action-btn" id="analyzeFromTranscriptBtn" title="Deep Analyze">
-                            <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                            Analyze
-                        </button>
-                    </div>
-                </div>
+            <div>
+              <div class="hw-lbl neg-lbl">❌ Negative</div>
+              <div class="hw-tags" id="hwNeg"></div>
             </div>
-        </section>
+          </div>
+        </div>
 
-        <!-- ── TAB: ANALYZE TEXT ── -->
-        <section class="tab-content" id="tab-analyze">
-            <div class="hero-text">
-                <h1>Paste Text, <span class="gradient-text">Reveal Emotion</span></h1>
-                <p>Paste or type any text to get a complete emotional intelligence breakdown.</p>
-            </div>
+        <!-- Text Stats -->
+        <div class="glass-card stats-card">
+          <div class="mini-hdr"><span class="card-badge">Text Stats</span></div>
+          <div class="stats-list">
+            <div class="stat-row"><span>Words</span><strong id="stWords">—</strong></div>
+            <div class="stat-row"><span>Sentences</span><strong id="stSent">—</strong></div>
+            <div class="stat-row"><span>Avg. Sentence</span><strong id="stAvg">—</strong></div>
+            <div class="stat-row"><span>Readability</span><strong id="stRead">—</strong></div>
+          </div>
+        </div>
 
-            <div class="analyze-layout">
-                <div class="card text-input-card">
-                    <div class="card-header">
-                        <h2>Input Text</h2>
-                        <span class="word-counter" id="wordCounter">0 words</span>
-                    </div>
-                    <textarea class="text-input" id="textInput" placeholder="Paste your text here — emails, reviews, speeches, conversations, articles...&#10;&#10;The AI will analyze sentiment, emotions, key phrases and more."></textarea>
-                    <div class="text-actions">
-                        <button class="btn-ghost" id="clearTextBtn">Clear</button>
-                        <button class="btn-ghost" id="sampleBtn">Load Sample</button>
-                        <button class="btn-primary" id="analyzeBtn">
-                            <span class="btn-text">Analyze Sentiment</span>
-                            <span class="btn-loader hidden"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
-                        </button>
-                    </div>
-                </div>
+        <!-- Top Words -->
+        <div class="glass-card tw-card">
+          <div class="mini-hdr"><span class="card-badge">Top Words</span></div>
+          <div class="tw-cloud" id="twCloud"></div>
+        </div>
 
-                <!-- Results -->
-                <div id="resultsPanel" class="results-panel hidden">
-                    <!-- Sentiment Score Card -->
-                    <div class="card sentiment-card" id="sentimentCard">
-                        <div class="sentiment-hero">
-                            <div class="sentiment-emoji" id="sentimentEmoji">😐</div>
-                            <div class="sentiment-info">
-                                <div class="sentiment-label" id="sentimentLabel">Neutral</div>
-                                <div class="sentiment-sub">Overall Sentiment</div>
-                            </div>
-                            <div class="sentiment-score-ring" id="scoreRing">
-                                <svg viewBox="0 0 80 80">
-                                    <circle cx="40" cy="40" r="32" stroke="var(--ring-track)" stroke-width="6" fill="none"/>
-                                    <circle cx="40" cy="40" r="32" stroke="var(--ring-color)" stroke-width="6" fill="none"
-                                        stroke-dasharray="201" stroke-dashoffset="201"
-                                        stroke-linecap="round"
-                                        id="scoreArc" transform="rotate(-90 40 40)"/>
-                                </svg>
-                                <span class="score-num" id="scoreNum">0</span>
-                            </div>
-                        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
-                        <!-- Score bar -->
-                        <div class="score-bar-wrap">
-                            <span class="bar-label">Negative</span>
-                            <div class="score-bar">
-                                <div class="score-fill" id="scoreFill"></div>
-                                <div class="score-marker" id="scoreMarker"></div>
-                            </div>
-                            <span class="bar-label">Positive</span>
-                        </div>
+<!-- ═══════════════════════════════ HISTORY TAB ═══════════════════════════════ -->
+<section class="tab-pane" id="tab-history">
+  <div class="page-hero">
+    <div class="hero-label">📋 Past Sessions</div>
+    <h1 class="hero-h1">Analysis <span class="shine-text">History</span></h1>
+    <p class="hero-sub">Browse and revisit your previous transcriptions and analyses</p>
+  </div>
 
-                        <!-- Stats row -->
-                        <div class="stats-row">
-                            <div class="stat-chip positive-chip">
-                                <span class="chip-num" id="posCount">0</span>
-                                <span>Positive signals</span>
-                            </div>
-                            <div class="stat-chip negative-chip">
-                                <span class="chip-num" id="negCount">0</span>
-                                <span>Negative signals</span>
-                            </div>
-                            <div class="stat-chip neutral-chip">
-                                <span class="chip-num" id="wordCount">0</span>
-                                <span>Total words</span>
-                            </div>
-                        </div>
-                    </div>
+  <div class="hist-bar">
+    <input type="text" class="hist-search" id="histSearch" placeholder="🔍  Search history…">
+    <button class="btn-ghost" id="clearHistBtn">Clear All</button>
+  </div>
+  <div class="hist-list" id="histList">
+    <div class="hist-empty">
+      <div class="hist-empty-art">📭</div>
+      <p>No history yet</p>
+      <span>Start transcribing or analyzing text to build your history</span>
+    </div>
+  </div>
+</section>
 
-                    <!-- Emotions -->
-                    <div class="card emotions-card" id="emotionsCard">
-                        <div class="card-header">
-                            <h2>Emotion Breakdown</h2>
-                        </div>
-                        <div class="emotions-grid" id="emotionsGrid">
-                            <div class="empty-emotions">No strong emotions detected</div>
-                        </div>
-                    </div>
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
 
-                    <!-- Text Stats + Key Phrases -->
-                    <div class="side-cards">
-                        <div class="card stats-card">
-                            <div class="card-header"><h2>Text Statistics</h2></div>
-                            <div class="text-stats" id="textStats">
-                                <div class="ts-item"><span>Sentences</span><strong id="sentCount">—</strong></div>
-                                <div class="ts-item"><span>Avg. Sentence Length</span><strong id="avgLen">—</strong></div>
-                                <div class="ts-item"><span>Confidence</span><strong id="confidence">—</strong></div>
-                            </div>
-                        </div>
-                        <div class="card phrases-card">
-                            <div class="card-header"><h2>Key Phrases</h2></div>
-                            <div class="phrases-list" id="phrasesList">
-                                <div class="empty-phrases">—</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Top Words -->
-                    <div class="card topwords-card">
-                        <div class="card-header"><h2>Top Words</h2></div>
-                        <div class="top-words" id="topWords"></div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- ── TAB: HISTORY ── -->
-        <section class="tab-content" id="tab-history">
-            <div class="hero-text">
-                <h1>Analysis <span class="gradient-text">History</span></h1>
-                <p>Review your past transcriptions and sentiment analyses.</p>
-            </div>
-            <div class="history-toolbar">
-                <input type="text" class="history-search" placeholder="Search history…" id="historySearch">
-                <button class="btn-ghost" id="clearHistoryBtn">Clear All</button>
-            </div>
-            <div class="history-list" id="historyList">
-                <div class="empty-history">
-                    <div class="empty-icon">
-                        <svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2" opacity="0.3"/><path d="M24 14v10l6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/></svg>
-                    </div>
-                    <p>No history yet — start by analyzing some text!</p>
-                </div>
-            </div>
-        </section>
-
-    </main>
-
-    <!-- Toast Notification -->
-    <div class="toast" id="toast"></div>
-
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="/static/js/app.js"></script>
 </body>
 </html>
