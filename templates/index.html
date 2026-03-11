@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcribe — Transcribe & Sentiment Analysis</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Background particles -->
+    <div class="bg-layer">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+        <div class="grid-overlay"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">
+                <svg viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 16c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="16" cy="20" r="3" fill="currentColor"/>
+                    <path d="M7 20h2M23 20h2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </div>
+            <span class="logo-text">Trans<span class="accent">cribe</span></span>
+        </div>
+        <nav class="nav-pills">
+            <button class="nav-pill active" data-tab="transcribe">Transcribe</button>
+            <button class="nav-pill" data-tab="analyze">Analyze Text</button>
+            <button class="nav-pill" data-tab="history">History</button>
+        </nav>
+        <div class="header-badge">
+            <span class="status-dot"></span>
+            <span>Live AI</span>
+        </div>
+    </header>
+
+    <!-- Main -->
+    <main class="main">
+
+        <!-- ── TAB: TRANSCRIBE ── -->
+        <section class="tab-content active" id="tab-transcribe">
+            <div class="hero-text">
+                <h1>Transcribe & <span class="gradient-text">Understand</span></h1>
+                <p>Record audio or upload a file — get instant transcription with deep sentiment intelligence.</p>
+            </div>
+
+            <div class="two-col">
+                <!-- Input Panel -->
+                <div class="card input-card">
+                    <div class="card-header">
+                        <h2>Audio Input</h2>
+                        <span class="tag">Step 1</span>
+                    </div>
+
+                    <!-- Record section -->
+                    <div class="record-section">
+                        <div class="record-visual" id="recordVisual">
+                            <div class="record-rings">
+                                <div class="ring r1"></div>
+                                <div class="ring r2"></div>
+                                <div class="ring r3"></div>
+                            </div>
+                            <button class="record-btn" id="recordBtn">
+                                <svg class="mic-icon" viewBox="0 0 24 24" fill="none">
+                                    <rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/>
+                                    <path d="M5 10c0 3.9 3.1 7 7 7s7-3.1 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    <line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    <line x1="8" y1="21" x2="16" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                                <svg class="stop-icon hidden" viewBox="0 0 24 24" fill="none">
+                                    <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="record-status" id="recordStatus">
+                            <span id="statusText">Click to start recording</span>
+                            <span class="timer hidden" id="timer">00:00</span>
+                        </div>
+
+                        <!-- Waveform -->
+                        <canvas class="waveform" id="waveform" width="400" height="60"></canvas>
+                    </div>
+
+                    <div class="divider-or"><span>or</span></div>
+
+                    <!-- Upload -->
+                    <div class="upload-zone" id="uploadZone">
+                        <input type="file" id="fileInput" accept="audio/*" hidden>
+                        <div class="upload-icon">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path d="M12 15V3M12 3L8 7M12 3L16 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M3 15v4a2 2 0 002 2h14a2 2 0 002-2v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <p class="upload-text">Drop audio file here</p>
+                        <p class="upload-sub">MP3, WAV, M4A, OGG · Max 50MB</p>
+                        <button class="btn-outline" onclick="document.getElementById('fileInput').click()">Browse Files</button>
+                    </div>
+
+                    <div class="audio-preview hidden" id="audioPreview">
+                        <div class="audio-info">
+                            <div class="audio-icon">♪</div>
+                            <div>
+                                <div class="audio-name" id="audioName">file.mp3</div>
+                                <div class="audio-size" id="audioSize">0 KB</div>
+                            </div>
+                        </div>
+                        <audio controls id="audioPlayer" class="audio-player"></audio>
+                    </div>
+
+                    <button class="btn-primary" id="transcribeBtn" disabled>
+                        <span class="btn-text">Transcribe Audio</span>
+                        <span class="btn-loader hidden">
+                            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                        </span>
+                    </button>
+                </div>
+
+                <!-- Output Panel -->
+                <div class="card output-card" id="outputCard">
+                    <div class="card-header">
+                        <h2>Transcription</h2>
+                        <span class="tag" id="outputTag">Waiting...</span>
+                    </div>
+                    <div class="transcription-area" id="transcriptionArea">
+                        <div class="empty-state">
+                            <div class="empty-icon">
+                                <svg viewBox="0 0 48 48" fill="none">
+                                    <circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+                                    <path d="M16 24h16M16 18h10M16 30h12" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+                                </svg>
+                            </div>
+                            <p>Your transcription will appear here</p>
+                        </div>
+                    </div>
+                    <div class="transcription-actions hidden" id="transcriptionActions">
+                        <button class="action-btn" id="copyBtn" title="Copy text">
+                            <svg viewBox="0 0 20 20" fill="none"><rect x="7" y="7" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 13V5a2 2 0 012-2h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                            Copy
+                        </button>
+                        <button class="action-btn" id="downloadBtn" title="Download">
+                            <svg viewBox="0 0 20 20" fill="none"><path d="M10 3v10M6 9l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                            Download
+                        </button>
+                        <button class="action-btn" id="analyzeFromTranscriptBtn" title="Deep Analyze">
+                            <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                            Analyze
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── TAB: ANALYZE TEXT ── -->
+        <section class="tab-content" id="tab-analyze">
+            <div class="hero-text">
+                <h1>Paste Text, <span class="gradient-text">Reveal Emotion</span></h1>
+                <p>Paste or type any text to get a complete emotional intelligence breakdown.</p>
+            </div>
+
+            <div class="analyze-layout">
+                <div class="card text-input-card">
+                    <div class="card-header">
+                        <h2>Input Text</h2>
+                        <span class="word-counter" id="wordCounter">0 words</span>
+                    </div>
+                    <textarea class="text-input" id="textInput" placeholder="Paste your text here — emails, reviews, speeches, conversations, articles...&#10;&#10;The AI will analyze sentiment, emotions, key phrases and more."></textarea>
+                    <div class="text-actions">
+                        <button class="btn-ghost" id="clearTextBtn">Clear</button>
+                        <button class="btn-ghost" id="sampleBtn">Load Sample</button>
+                        <button class="btn-primary" id="analyzeBtn">
+                            <span class="btn-text">Analyze Sentiment</span>
+                            <span class="btn-loader hidden"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Results -->
+                <div id="resultsPanel" class="results-panel hidden">
+                    <!-- Sentiment Score Card -->
+                    <div class="card sentiment-card" id="sentimentCard">
+                        <div class="sentiment-hero">
+                            <div class="sentiment-emoji" id="sentimentEmoji">😐</div>
+                            <div class="sentiment-info">
+                                <div class="sentiment-label" id="sentimentLabel">Neutral</div>
+                                <div class="sentiment-sub">Overall Sentiment</div>
+                            </div>
+                            <div class="sentiment-score-ring" id="scoreRing">
+                                <svg viewBox="0 0 80 80">
+                                    <circle cx="40" cy="40" r="32" stroke="var(--ring-track)" stroke-width="6" fill="none"/>
+                                    <circle cx="40" cy="40" r="32" stroke="var(--ring-color)" stroke-width="6" fill="none"
+                                        stroke-dasharray="201" stroke-dashoffset="201"
+                                        stroke-linecap="round"
+                                        id="scoreArc" transform="rotate(-90 40 40)"/>
+                                </svg>
+                                <span class="score-num" id="scoreNum">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Score bar -->
+                        <div class="score-bar-wrap">
+                            <span class="bar-label">Negative</span>
+                            <div class="score-bar">
+                                <div class="score-fill" id="scoreFill"></div>
+                                <div class="score-marker" id="scoreMarker"></div>
+                            </div>
+                            <span class="bar-label">Positive</span>
+                        </div>
+
+                        <!-- Stats row -->
+                        <div class="stats-row">
+                            <div class="stat-chip positive-chip">
+                                <span class="chip-num" id="posCount">0</span>
+                                <span>Positive signals</span>
+                            </div>
+                            <div class="stat-chip negative-chip">
+                                <span class="chip-num" id="negCount">0</span>
+                                <span>Negative signals</span>
+                            </div>
+                            <div class="stat-chip neutral-chip">
+                                <span class="chip-num" id="wordCount">0</span>
+                                <span>Total words</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Emotions -->
+                    <div class="card emotions-card" id="emotionsCard">
+                        <div class="card-header">
+                            <h2>Emotion Breakdown</h2>
+                        </div>
+                        <div class="emotions-grid" id="emotionsGrid">
+                            <div class="empty-emotions">No strong emotions detected</div>
+                        </div>
+                    </div>
+
+                    <!-- Text Stats + Key Phrases -->
+                    <div class="side-cards">
+                        <div class="card stats-card">
+                            <div class="card-header"><h2>Text Statistics</h2></div>
+                            <div class="text-stats" id="textStats">
+                                <div class="ts-item"><span>Sentences</span><strong id="sentCount">—</strong></div>
+                                <div class="ts-item"><span>Avg. Sentence Length</span><strong id="avgLen">—</strong></div>
+                                <div class="ts-item"><span>Confidence</span><strong id="confidence">—</strong></div>
+                            </div>
+                        </div>
+                        <div class="card phrases-card">
+                            <div class="card-header"><h2>Key Phrases</h2></div>
+                            <div class="phrases-list" id="phrasesList">
+                                <div class="empty-phrases">—</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Top Words -->
+                    <div class="card topwords-card">
+                        <div class="card-header"><h2>Top Words</h2></div>
+                        <div class="top-words" id="topWords"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── TAB: HISTORY ── -->
+        <section class="tab-content" id="tab-history">
+            <div class="hero-text">
+                <h1>Analysis <span class="gradient-text">History</span></h1>
+                <p>Review your past transcriptions and sentiment analyses.</p>
+            </div>
+            <div class="history-toolbar">
+                <input type="text" class="history-search" placeholder="Search history…" id="historySearch">
+                <button class="btn-ghost" id="clearHistoryBtn">Clear All</button>
+            </div>
+            <div class="history-list" id="historyList">
+                <div class="empty-history">
+                    <div class="empty-icon">
+                        <svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2" opacity="0.3"/><path d="M24 14v10l6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/></svg>
+                    </div>
+                    <p>No history yet — start by analyzing some text!</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast"></div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
