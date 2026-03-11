@@ -1,487 +1,602 @@
-/* =====================================================
+/* ═══════════════════════════════════════════════════
    Transcribe — Frontend Logic
-   ===================================================== */
+   Web Speech API for real transcription
+   ═══════════════════════════════════════════════════ */
 
 // ── State ──
-let mediaRecorder = null;
-let audioChunks = [];
-let recordingTimer = null;
-let recordingSeconds = 0;
-let audioBlob = null;
-let currentTranscription = '';
-let history = JSON.parse(localStorage.getItem('transcribe_history') || '[]');
-let analyzerNode = null, animFrameId = null;
+let recognition   = null;
+let isRecording   = false;
+let timerInterval = null;
+let timerSecs     = 0;
+let audioBlob     = null;
+let finalTranscript = '';
+let interimTranscript = '';
+let analyzerNode  = null;
+let animFrame     = null;
+let audioCtx      = null;
+let history       = [];
 
-// ── Dom Refs ──
+try { history = JSON.parse(localStorage.getItem('transcribe_history') || '[]'); } catch(e){ history=[]; }
+
+// ── DOM ──
 const $ = id => document.getElementById(id);
-const recordBtn       = $('recordBtn');
-const recordVisual    = $('recordVisual');
-const statusText      = $('statusText');
-const timerEl         = $('timer');
-const waveformCanvas  = $('waveform');
-const transcribeBtn   = $('transcribeBtn');
-const uploadZone      = $('uploadZone');
-const fileInput       = $('fileInput');
-const audioPreview    = $('audioPreview');
-const audioName       = $('audioName');
-const audioSize       = $('audioSize');
-const audioPlayer     = $('audioPlayer');
-const transcriptionArea = $('transcriptionArea');
-const transcriptionActions = $('transcriptionActions');
-const outputTag       = $('outputTag');
-const textInput       = $('textInput');
-const analyzeBtn      = $('analyzeBtn');
-const resultsPanel    = $('resultsPanel');
-const wordCounter     = $('wordCounter');
-const historyList     = $('historyList');
-const historySearch   = $('historySearch');
-const waveCtx         = waveformCanvas ? waveformCanvas.getContext('2d') : null;
+const micBtn         = $('micBtn');
+const micOrbit       = $('micOrbit');
+const micStatusText  = $('micStatusText');
+const micTimer       = $('micTimer');
+const liveTranscript = $('liveTranscript');
+const liveText       = $('liveText');
+const waveCanvas     = $('waveCanvas');
+const waveCtx        = waveCanvas ? waveCanvas.getContext('2d') : null;
+const uploadBox      = $('uploadBox');
+const fileInput      = $('fileInput');
+const audioChip      = $('audioChip');
+const achipName      = $('achipName');
+const achipSize      = $('achipSize');
+const audioEl        = $('audioEl');
+const transcribeBtn  = $('transcribeBtn');
+const transcriptBox  = $('transcriptBox');
+const outActions     = $('outActions');
+const outBadge       = $('outBadge');
+const quickSentiment = $('quickSentiment');
+const textInput      = $('textInput');
+const analyzeBtn     = $('analyzeBtn');
+const resultsWrap    = $('resultsWrap');
+const wcBadge        = $('wcBadge');
+const histList       = $('histList');
+const histSearch     = $('histSearch');
 
-// ── Tabs ──
-document.querySelectorAll('.nav-pill').forEach(pill => {
-  pill.addEventListener('click', () => {
-    document.querySelectorAll('.nav-pill').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    pill.classList.add('active');
-    const tab = pill.dataset.tab;
-    const el = $('tab-' + tab);
-    if (el) { el.classList.add('active'); }
-    if (tab === 'history') renderHistory();
-  });
-});
+// ══════════════════════════════════════
+//  TABS
+// ══════════════════════════════════════
+function initTabs() {
+  const pills  = document.querySelectorAll('.tnav');
+  const panes  = document.querySelectorAll('.tab-pane');
+  const slider = document.querySelector('.tnav-slider');
 
-// ── Recording ──
-recordBtn.addEventListener('click', async () => {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    stopRecording();
-  } else {
-    await startRecording();
+  function moveSlider(btn) {
+    const nav = btn.closest('.tab-nav');
+    const navRect = nav.getBoundingClientRect();
+    const btnRect = btn.getBoundingClientRect();
+    slider.style.left  = (btnRect.left - navRect.left - 4) + 'px';
+    slider.style.width = btnRect.width + 'px';
   }
-});
+
+  // Init position on active
+  const activeBtn = document.querySelector('.tnav.active');
+  if (activeBtn) setTimeout(() => moveSlider(activeBtn), 50);
+
+  pills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      pills.forEach(p => p.classList.remove('active'));
+      panes.forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      const pane = $('tab-' + pill.dataset.tab);
+      if (pane) pane.classList.add('active');
+      moveSlider(pill);
+      if (pill.dataset.tab === 'history') renderHistory();
+    });
+  });
+}
+initTabs();
+
+// ══════════════════════════════════════
+//  WEB SPEECH API — REAL TRANSCRIPTION
+// ══════════════════════════════════════
+function initSpeechRecognition() {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) return null;
+
+  const rec = new SpeechRec();
+  rec.continuous     = true;
+  rec.interimResults = true;
+  rec.lang           = 'en-US'; // change to 'hi-IN' for Hindi
+
+  rec.onstart = () => {
+    isRecording = true;
+    micBtn.classList.add('recording');
+    micOrbit.classList.add('recording');
+    micBtn.querySelector('.icon-mic').style.display  = 'none';
+    micBtn.querySelector('.icon-stop').style.display = 'block';
+    micStatusText.textContent = 'Recording… speak now';
+    micTimer.classList.remove('hidden');
+    liveTranscript.classList.remove('hidden');
+    liveText.textContent = 'Listening…';
+    startTimer();
+    transcribeBtn.disabled = false;
+  };
+
+  rec.onresult = (e) => {
+    interimTranscript = '';
+    finalTranscript   = '';
+    for (let i = 0; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) finalTranscript += t + ' ';
+      else interimTranscript += t;
+    }
+    liveText.textContent = (finalTranscript + interimTranscript).trim() || 'Listening…';
+  };
+
+  rec.onerror = (e) => {
+    if (e.error === 'no-speech') return;
+    showToast('Mic error: ' + e.error);
+    stopRecording();
+  };
+
+  rec.onend = () => {
+    if (isRecording) {
+      // auto-restart for continuous
+      try { rec.start(); } catch(err) {}
+    }
+  };
+
+  return rec;
+}
 
 async function startRecording() {
+  // Request mic for waveform
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
-    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
-    mediaRecorder.onstop = () => {
-      audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-      const url = URL.createObjectURL(audioBlob);
-      audioPlayer.src = url;
-      audioName.textContent = 'recording.webm';
-      audioSize.textContent = formatSize(audioBlob.size);
-      audioPreview.classList.remove('hidden');
-      uploadZone.classList.add('hidden');
-      transcribeBtn.disabled = false;
-      // Visualize
-      setupWaveform(stream);
-    };
-    mediaRecorder.start(100);
-
-    recordBtn.classList.add('recording');
-    recordBtn.querySelector('.mic-icon').classList.add('hidden');
-    recordBtn.querySelector('.stop-icon').classList.remove('hidden');
-    recordVisual.classList.add('recording');
-    statusText.textContent = 'Recording…';
-    timerEl.classList.remove('hidden');
-    recordingSeconds = 0;
-    recordingTimer = setInterval(() => {
-      recordingSeconds++;
-      const m = String(Math.floor(recordingSeconds / 60)).padStart(2, '0');
-      const s = String(recordingSeconds % 60).padStart(2, '0');
-      timerEl.textContent = `${m}:${s}`;
-    }, 1000);
-
-    setupWaveformLive(stream);
-  } catch (err) {
+    drawLiveWave(stream);
+    audioCtx = new AudioContext();
+  } catch(err) {
     showToast('Microphone access denied.');
+    return;
   }
+
+  recognition = initSpeechRecognition();
+
+  if (!recognition) {
+    // fallback: no speech API
+    showToast('Speech API not supported in this browser. Try Chrome/Edge.');
+    micStatusText.textContent = 'Not supported — use Chrome/Edge';
+    return;
+  }
+
+  finalTranscript   = '';
+  interimTranscript = '';
+  recognition.start();
 }
 
 function stopRecording() {
-  if (mediaRecorder) {
-    mediaRecorder.stop();
-    mediaRecorder.stream.getTracks().forEach(t => t.stop());
+  isRecording = false;
+  if (recognition) { try { recognition.stop(); } catch(e){} }
+  micBtn.classList.remove('recording');
+  micOrbit.classList.remove('recording');
+  micBtn.querySelector('.icon-mic').style.display  = 'block';
+  micBtn.querySelector('.icon-stop').style.display = 'none';
+  micStatusText.textContent = 'Recording complete';
+  micTimer.classList.add('hidden');
+  clearInterval(timerInterval);
+  if (animFrame) cancelAnimationFrame(animFrame);
+
+  const text = finalTranscript.trim();
+  if (text) {
+    liveText.textContent = text;
+    micStatusText.textContent = '✓ Transcription ready';
+    transcribeBtn.disabled = false;
+  } else {
+    liveText.textContent = 'No speech detected. Try again.';
+    micStatusText.textContent = 'Tap to try again';
   }
-  clearInterval(recordingTimer);
-  recordBtn.classList.remove('recording');
-  recordBtn.querySelector('.mic-icon').classList.remove('hidden');
-  recordBtn.querySelector('.stop-icon').classList.add('hidden');
-  recordVisual.classList.remove('recording');
-  statusText.textContent = 'Recording saved';
-  timerEl.classList.add('hidden');
-  if (animFrameId) cancelAnimationFrame(animFrameId);
 }
 
-// ── Waveform (live) ──
-function setupWaveformLive(stream) {
-  const audioCtx = new AudioContext();
-  const source = audioCtx.createMediaStreamSource(stream);
-  analyzerNode = audioCtx.createAnalyser();
+micBtn.addEventListener('click', () => {
+  if (isRecording) stopRecording();
+  else startRecording();
+});
+
+function startTimer() {
+  timerSecs = 0;
+  clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    timerSecs++;
+    const m = String(Math.floor(timerSecs/60)).padStart(2,'0');
+    const s = String(timerSecs%60).padStart(2,'0');
+    micTimer.textContent = m + ':' + s;
+  }, 1000);
+}
+
+// ══════════════════════════════════════
+//  WAVEFORM
+// ══════════════════════════════════════
+function drawLiveWave(stream) {
+  if (!waveCtx) return;
+  const aCtx    = new AudioContext();
+  const src     = aCtx.createMediaStreamSource(stream);
+  analyzerNode  = aCtx.createAnalyser();
   analyzerNode.fftSize = 256;
-  source.connect(analyzerNode);
-  drawWaveform();
-}
+  src.connect(analyzerNode);
 
-function drawWaveform() {
-  if (!analyzerNode || !waveCtx) return;
+  const W = waveCanvas.width, H = waveCanvas.height;
   const data = new Uint8Array(analyzerNode.frequencyBinCount);
-  analyzerNode.getByteTimeDomainData(data);
 
-  const W = waveformCanvas.width, H = waveformCanvas.height;
-  waveCtx.clearRect(0, 0, W, H);
-  waveCtx.fillStyle = 'rgba(232,242,238,0.4)';
-  waveCtx.fillRect(0, 0, W, H);
+  function draw() {
+    animFrame = requestAnimationFrame(draw);
+    analyzerNode.getByteTimeDomainData(data);
+    waveCtx.clearRect(0,0,W,H);
+    waveCtx.fillStyle = 'rgba(255,255,255,0.02)';
+    waveCtx.fillRect(0,0,W,H);
 
-  waveCtx.lineWidth = 2;
-  waveCtx.strokeStyle = '#6BAB90';
-  waveCtx.beginPath();
-  const sliceW = W / data.length;
-  let x = 0;
-  for (let i = 0; i < data.length; i++) {
-    const v = data[i] / 128;
-    const y = (v * H) / 2;
-    if (i === 0) waveCtx.moveTo(x, y);
-    else waveCtx.lineTo(x, y);
-    x += sliceW;
+    // gradient stroke
+    const grad = waveCtx.createLinearGradient(0,0,W,0);
+    grad.addColorStop(0,   '#7C5FE8');
+    grad.addColorStop(0.5, '#36D9A0');
+    grad.addColorStop(1,   '#FF6B6B');
+    waveCtx.lineWidth = 2.5;
+    waveCtx.strokeStyle = grad;
+    waveCtx.beginPath();
+    const sw = W / data.length;
+    let x = 0;
+    for (let i=0; i<data.length; i++) {
+      const v = data[i]/128;
+      const y = (v*H)/2;
+      i===0 ? waveCtx.moveTo(x,y) : waveCtx.lineTo(x,y);
+      x += sw;
+    }
+    waveCtx.stroke();
   }
-  waveCtx.stroke();
-  animFrameId = requestAnimationFrame(drawWaveform);
+  draw();
 }
 
-// ── Upload ──
-uploadZone.addEventListener('click', () => fileInput.click());
-uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragging'); });
-uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragging'));
-uploadZone.addEventListener('drop', e => {
-  e.preventDefault();
-  uploadZone.classList.remove('dragging');
-  const file = e.dataTransfer.files[0];
-  if (file) handleFile(file);
+// ══════════════════════════════════════
+//  UPLOAD
+// ══════════════════════════════════════
+uploadBox.addEventListener('click', () => fileInput.click());
+uploadBox.addEventListener('dragover', e => { e.preventDefault(); uploadBox.classList.add('drag'); });
+uploadBox.addEventListener('dragleave', () => uploadBox.classList.remove('drag'));
+uploadBox.addEventListener('drop', e => {
+  e.preventDefault(); uploadBox.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
 });
-fileInput.addEventListener('change', () => {
-  if (fileInput.files[0]) handleFile(fileInput.files[0]);
-});
+fileInput.addEventListener('change', () => { if(fileInput.files[0]) handleFile(fileInput.files[0]); });
 
 function handleFile(file) {
-  if (!file.type.startsWith('audio/')) { showToast('Please upload an audio file.'); return; }
+  if (!file.type.startsWith('audio/')) { showToast('Please upload an audio file'); return; }
   audioBlob = file;
-  const url = URL.createObjectURL(file);
-  audioPlayer.src = url;
-  audioName.textContent = file.name;
-  audioSize.textContent = formatSize(file.size);
-  audioPreview.classList.remove('hidden');
+  audioEl.src = URL.createObjectURL(file);
+  achipName.textContent = file.name;
+  achipSize.textContent = fmtSize(file.size);
+  audioChip.classList.remove('hidden');
   transcribeBtn.disabled = false;
-  showToast('File ready for transcription!');
+  showToast('Audio file ready!');
 }
 
-// ── Transcribe ──
+// ══════════════════════════════════════
+//  TRANSCRIBE BUTTON
+// ══════════════════════════════════════
 transcribeBtn.addEventListener('click', async () => {
-  if (!audioBlob) return;
-  setLoading(transcribeBtn, true);
-  outputTag.textContent = 'Processing…';
+  // Use live speech result if recording was used
+  const speechText = finalTranscript.trim();
 
-  // Since we can't do real audio transcription without API key, 
-  // we'll use Web Speech API for live recording, or show demo for uploaded files
-  try {
-    if (audioBlob.name && !audioBlob.name.includes('recording')) {
-      // Simulate for uploaded file with demo text
-      await sleep(2000);
-      const demoTexts = [
-        "I'm really excited about this project. The team has done an amazing job so far, and I believe we're going to achieve something truly remarkable. Everyone's been so collaborative and supportive throughout this whole process.",
-        "The meeting didn't go as well as expected. Several issues were raised that we weren't prepared for, and honestly it left me feeling quite worried about the deadline. We need to work harder to fix these problems.",
-        "Today was quite ordinary. We reviewed the quarterly report and discussed some potential changes to the workflow. The numbers were acceptable but nothing particularly stood out as exceptional or problematic."
-      ];
-      const demo = demoTexts[Math.floor(Math.random() * demoTexts.length)];
-      showTranscription(demo);
-      analyzeAndShowSentiment(demo);
-    } else {
-      // For recorded audio, use demo
-      await sleep(1500);
-      const demo = "This is a recorded message. I feel genuinely happy and optimistic about the future. There are some challenges ahead, but I'm confident we can overcome them with hard work and dedication.";
-      showTranscription(demo);
-      analyzeAndShowSentiment(demo);
-    }
-  } catch (err) {
-    showToast('Transcription failed. Please try again.');
+  if (speechText) {
+    // We already have the transcription from Web Speech API
+    setOutText(speechText);
+    const data = await callAnalyze(speechText);
+    if (data) { showQuickSentiment(data); saveHist(speechText, data); }
+    return;
   }
-  setLoading(transcribeBtn, false);
+
+  // If file uploaded, show a note since we can't transcribe without external API
+  if (audioBlob) {
+    setLoading(transcribeBtn, 'tBtnText','tBtnLoader', true);
+    await sleep(1200);
+    const msg = "⚠️ Audio file transcription requires an external API key (e.g. OpenAI Whisper or AssemblyAI). For now, please use the microphone to record and get real-time transcription via your browser's Speech Recognition. Alternatively, paste your text in the 'Analyze' tab.";
+    setOutText(msg, true);
+    setLoading(transcribeBtn, 'tBtnText','tBtnLoader', false);
+    showToast('Use mic recording for live transcription');
+    return;
+  }
+
+  showToast('Please record audio first');
 });
 
-function showTranscription(text) {
-  currentTranscription = text;
-  transcriptionArea.innerHTML = `<p style="white-space:pre-wrap">${text}</p>`;
-  transcriptionActions.classList.remove('hidden');
-  outputTag.textContent = 'Complete ✓';
+function setOutText(text, isNote=false) {
+  transcriptBox.innerHTML = `<p style="white-space:pre-wrap;color:${isNote?'var(--t3)':'var(--t1)'};font-size:15px;line-height:1.75">${escHtml(text)}</p>`;
+  outActions.classList.remove('hidden');
+  outBadge.textContent = isNote ? '⚠️ Info' : '✓ Transcribed';
+  window._lastTranscript = isNote ? '' : text;
 }
 
-// ── Analyze from transcript ──
-$('analyzeFromTranscriptBtn').addEventListener('click', () => {
-  if (!currentTranscription) return;
-  // Switch to analyze tab and pre-fill
-  document.querySelectorAll('.nav-pill').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  document.querySelector('[data-tab="analyze"]').classList.add('active');
-  $('tab-analyze').classList.add('active');
-  textInput.value = currentTranscription;
-  updateWordCounter();
-  analyzeText();
+// ── Action buttons ──
+$('copyBtn').addEventListener('click', () => {
+  const t = window._lastTranscript || '';
+  if (!t) { showToast('Nothing to copy'); return; }
+  navigator.clipboard.writeText(t).then(() => showToast('Copied! ✓'));
 });
 
-// ── Copy / Download ──
-$('copyBtn').addEventListener('click', () => {
-  navigator.clipboard.writeText(currentTranscription).then(() => showToast('Copied to clipboard!'));
-});
-$('downloadBtn').addEventListener('click', () => {
-  const blob = new Blob([currentTranscription], { type: 'text/plain' });
+$('dlBtn').addEventListener('click', () => {
+  const t = window._lastTranscript || '';
+  if (!t) { showToast('Nothing to download'); return; }
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'transcription.txt';
-  a.click();
+  a.href = URL.createObjectURL(new Blob([t],{type:'text/plain'}));
+  a.download = 'transcription.txt'; a.click();
   showToast('Downloaded!');
 });
 
-// ── Text Analysis ──
-textInput.addEventListener('input', updateWordCounter);
-
-function updateWordCounter() {
-  const words = textInput.value.trim().split(/\s+/).filter(Boolean);
-  wordCounter.textContent = `${words.length} word${words.length !== 1 ? 's' : ''}`;
-}
-
-$('clearTextBtn').addEventListener('click', () => {
-  textInput.value = '';
-  updateWordCounter();
-  resultsPanel.classList.add('hidden');
+$('toAnalyzeBtn').addEventListener('click', () => {
+  const t = window._lastTranscript || '';
+  if (!t) { showToast('No transcription available'); return; }
+  textInput.value = t;
+  updateWC();
+  // switch tab
+  document.querySelectorAll('.tnav').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  const ab = document.querySelector('[data-tab="analyze"]');
+  ab.classList.add('active');
+  const slider = document.querySelector('.tnav-slider');
+  const nav = ab.closest('.tab-nav');
+  const navR = nav.getBoundingClientRect();
+  const btnR = ab.getBoundingClientRect();
+  slider.style.left  = (btnR.left - navR.left - 4) + 'px';
+  slider.style.width = btnR.width + 'px';
+  $('tab-analyze').classList.add('active');
+  analyzeText();
 });
 
-$('sampleBtn').addEventListener('click', () => {
-  const samples = [
-    "I absolutely loved the new product launch! The team worked incredibly hard and the results are beyond our expectations. Customers are genuinely thrilled and the feedback has been overwhelmingly positive. This is exactly the kind of success we've been working towards.",
-    "The experience was deeply disappointing and frustrating. Multiple issues plagued the event from the start. People were upset, the atmosphere was tense, and nothing seemed to go according to plan. It was a complete disaster.",
-    "The quarterly meeting covered several operational updates. The team reviewed progress on current projects and discussed resource allocation for the next period. Some items require further analysis before decisions can be finalized."
-  ];
-  textInput.value = samples[Math.floor(Math.random() * samples.length)];
-  updateWordCounter();
+// ══════════════════════════════════════
+//  QUICK SENTIMENT STRIP
+// ══════════════════════════════════════
+function showQuickSentiment(data) {
+  quickSentiment.classList.remove('hidden');
+  $('qsEmoji').textContent  = sentEmoji(data.sentiment);
+  $('qsLabel').textContent  = cap(data.sentiment);
+  $('qsScore').textContent  = Math.round(Math.abs(data.score)*100);
+  const fill = $('qsFill');
+  const pct  = Math.abs(data.score) * 100;
+  const col  = data.sentiment==='positive' ? 'var(--mint)' : data.sentiment==='negative' ? 'var(--coral)' : 'rgba(255,255,255,0.3)';
+  fill.style.background = col;
+  setTimeout(() => { fill.style.width = pct + '%'; }, 50);
+}
+
+// ══════════════════════════════════════
+//  ANALYZE TEXT TAB
+// ══════════════════════════════════════
+textInput.addEventListener('input', updateWC);
+function updateWC() {
+  const w = textInput.value.trim().split(/\s+/).filter(Boolean).length;
+  wcBadge.textContent = w + ' word' + (w===1?'':'s');
+}
+
+// Samples
+$('samplePos').addEventListener('click', () => {
+  textInput.value = "Today was absolutely incredible! I got promoted at work and my team threw me a surprise party. Everyone was so warm, supportive, and genuinely happy for me. I feel grateful, confident, and inspired to keep working hard. This is exactly the kind of success and recognition that motivates me. Life is wonderful and I'm thrilled for the future!";
+  updateWC(); resultsWrap.classList.add('hidden');
+});
+$('sampleNeg').addEventListener('click', () => {
+  textInput.value = "The project was a complete disaster and I feel utterly frustrated. Everything went wrong from the start — deadlines were missed, communication was terrible, and the team was exhausted and overwhelmed. I'm worried we'll never recover from this failure. It's hard not to feel hopeless and stuck. The whole experience was painful and deeply disappointing.";
+  updateWC(); resultsWrap.classList.add('hidden');
+});
+$('sampleNeu').addEventListener('click', () => {
+  textInput.value = "The quarterly report was reviewed in the meeting today. The team covered current project status, resource allocation, and upcoming milestones. A few items need further analysis before final decisions can be made. The next meeting is scheduled for Friday at 2pm. Please review the attached documents before then.";
+  updateWC(); resultsWrap.classList.add('hidden');
+});
+
+$('clearBtn').addEventListener('click', () => {
+  textInput.value = '';
+  updateWC();
+  resultsWrap.classList.add('hidden');
 });
 
 analyzeBtn.addEventListener('click', analyzeText);
 
 async function analyzeText() {
   const text = textInput.value.trim();
-  if (!text) { showToast('Please enter some text first.'); return; }
-  setLoading(analyzeBtn, true);
+  if (!text) { showToast('Please enter some text first'); return; }
+  setLoading(analyzeBtn, 'aBtnText','aBtnLoader', true);
+  const data = await callAnalyze(text);
+  setLoading(analyzeBtn, 'aBtnText','aBtnLoader', false);
+  if (data) { renderResults(data); saveHist(text, data); }
+}
 
+async function callAnalyze(text) {
   try {
-    const res = await fetch('/analyze', {
+    const r = await fetch('/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text})
     });
-    const data = await res.json();
-    renderResults(data, text);
-    saveToHistory(text, data);
-  } catch (err) {
-    showToast('Analysis failed. Please try again.');
+    return await r.json();
+  } catch(e) {
+    showToast('Analysis failed. Is the Flask server running?');
+    return null;
   }
-  setLoading(analyzeBtn, false);
 }
 
-async function analyzeAndShowSentiment(text) {
-  try {
-    const res = await fetch('/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
-    });
-    const data = await res.json();
-    const emoji = getSentimentEmoji(data.sentiment);
-    outputTag.textContent = `${emoji} ${capitalize(data.sentiment)}`;
-    saveToHistory(text, data);
-  } catch {}
-}
+// ══════════════════════════════════════
+//  RENDER RESULTS
+// ══════════════════════════════════════
+const EMOTION_ICONS = {
+  joy:'😄', sadness:'😢', anger:'😠', fear:'😨',
+  surprise:'😲', trust:'🤝', disgust:'🤢', anticipation:'🌅'
+};
 
-// ── Render Results ──
-function renderResults(data, text) {
-  resultsPanel.classList.remove('hidden');
+function renderResults(d) {
+  resultsWrap.classList.remove('hidden');
 
-  // Sentiment Card
-  const card = $('sentimentCard');
-  card.className = `card sentiment-card ${data.sentiment}`;
+  // Big card class
+  const card = $('sentBigCard');
+  card.className = 'glass-card sentiment-big-card ' + d.sentiment;
+  $('sbcEmoji').textContent = sentEmoji(d.sentiment);
+  $('sbcLabel').textContent = cap(d.sentiment);
 
-  $('sentimentEmoji').textContent = getSentimentEmoji(data.sentiment);
-  $('sentimentLabel').textContent = capitalize(data.sentiment);
+  // Arc
+  const pct    = Math.abs(d.score);
+  const offset = 251 - (pct * 251);
+  const arc    = $('arcCircle');
+  arc.style.strokeDashoffset = 251; // reset
+  $('arcNum').textContent = Math.round(pct * 100);
+  setTimeout(() => { arc.style.strokeDashoffset = offset; }, 80);
 
-  // Score ring
-  const pct = Math.abs(data.score);
-  const offset = 201 - (pct * 201);
-  const arc = $('scoreArc');
-  arc.style.strokeDashoffset = offset;
-  const ringColor = data.sentiment === 'positive' ? '#6BAB90' : data.sentiment === 'negative' ? '#FF6B5B' : '#9AA0AF';
-  arc.style.stroke = ringColor;
-  $('scoreNum').textContent = Math.round(pct * 100);
-
-  // Score bar marker
-  const markerPos = ((data.score + 1) / 2) * 100;
-  $('scoreMarker').style.left = `${Math.max(5, Math.min(95, markerPos))}%`;
-  $('scoreMarker').style.borderColor = ringColor;
-
-  // Counts
-  $('posCount').textContent = data.positive_count;
-  $('negCount').textContent = data.negative_count;
-  $('wordCount').textContent = data.word_count;
+  // Polarity thumb
+  const pos = ((d.score + 1) / 2) * 100;
+  $('polarThumb').style.left = Math.max(4, Math.min(96, pos)) + '%';
 
   // Stats
-  $('sentCount').textContent = data.sentence_count;
-  $('avgLen').textContent = `${data.avg_sentence_length} words`;
-  $('confidence').textContent = `${data.confidence}%`;
+  $('spPos').textContent   = d.positive_count;
+  $('spNeg').textContent   = d.negative_count;
+  $('spWords').textContent = d.word_count;
+  $('spConf').textContent  = d.confidence + '%';
+
+  // Text stats
+  $('stWords').textContent = d.word_count;
+  $('stSent').textContent  = d.sentence_count;
+  $('stAvg').textContent   = d.avg_sentence_length + ' words';
+  $('stRead').textContent  = d.readability;
 
   // Emotions
-  const eg = $('emotionsGrid');
-  if (Object.keys(data.emotions).length === 0) {
-    eg.innerHTML = '<div class="empty-emotions">No strong emotions detected</div>';
+  const emoList = $('emoList');
+  const emos = d.emotions || {};
+  if (!Object.keys(emos).length) {
+    emoList.innerHTML = '<div class="emo-empty">No strong emotions detected</div>';
   } else {
-    eg.innerHTML = '';
-    const sorted = Object.entries(data.emotions).sort((a, b) => b[1] - a[1]);
-    sorted.forEach(([emotion, pct], i) => {
+    emoList.innerHTML = '';
+    Object.entries(emos).forEach(([name, pct], i) => {
       const el = document.createElement('div');
-      el.className = `emotion-item emotion-${emotion}`;
-      el.style.animationDelay = `${i * 0.07}s`;
+      el.className = `emo-item emo-${name}`;
+      el.style.animationDelay = (i*0.08)+'s';
       el.innerHTML = `
-        <div class="emotion-top">
-          <div class="emotion-name">${getEmotionIcon(emotion)} ${emotion}</div>
-          <div class="emotion-pct">${pct}%</div>
-        </div>
-        <div class="emotion-bar-bg">
-          <div class="emotion-bar" style="width: 0%"></div>
-        </div>`;
-      eg.appendChild(el);
-      setTimeout(() => { el.querySelector('.emotion-bar').style.width = `${pct}%`; }, 50 + i * 70);
+        <span class="emo-icon">${EMOTION_ICONS[name]||'💭'}</span>
+        <span class="emo-name">${name}</span>
+        <div class="emo-track"><div class="emo-fill" style="width:0%"></div></div>
+        <span class="emo-pct">${pct}%</span>`;
+      emoList.appendChild(el);
+      setTimeout(() => { el.querySelector('.emo-fill').style.width = pct+'%'; }, 100 + i*80);
     });
   }
 
   // Key phrases
-  const pl = $('phrasesList');
-  if (!data.key_phrases || data.key_phrases.length === 0) {
-    pl.innerHTML = '<div class="empty-phrases">—</div>';
+  const kpTags = $('kpTags');
+  if (!d.key_phrases || !d.key_phrases.length) {
+    kpTags.innerHTML = '<span class="kp-empty">—</span>';
   } else {
-    pl.innerHTML = data.key_phrases.slice(0, 8).map((p, i) =>
-      `<span class="phrase-tag" style="animation-delay:${i*0.05}s">${p}</span>`
+    kpTags.innerHTML = d.key_phrases.slice(0,10).map((p,i) =>
+      `<span class="kp-tag" style="animation-delay:${i*0.05}s">${escHtml(p)}</span>`
     ).join('');
   }
 
-  // Top words
-  const tw = $('topWords');
-  tw.innerHTML = (data.top_words || []).map((w, i) =>
-    `<div class="word-chip" style="animation-delay:${i*0.04}s">
-      <span class="word-chip-text">${w.word}</span>
-      <span class="word-chip-count">${w.count}</span>
-    </div>`
-  ).join('');
+  // Highlighted words
+  const hwPos = $('hwPos');
+  const hwNeg = $('hwNeg');
+  hwPos.innerHTML = (d.positive_words||[]).map(w=>
+    `<span class="hw-pos-tag">${w}</span>`).join('') || '<span style="color:var(--t4);font-size:11px">—</span>';
+  hwNeg.innerHTML = (d.negative_words||[]).map(w=>
+    `<span class="hw-neg-tag">${w}</span>`).join('') || '<span style="color:var(--t4);font-size:11px">—</span>';
 
-  // Scroll to results
-  setTimeout(() => resultsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  // Top words cloud
+  const tw = $('twCloud');
+  tw.innerHTML = (d.top_words||[]).map((w,i)=>
+    `<div class="tw-chip" style="animation-delay:${i*0.04}s">
+      <span class="tw-word">${w.word}</span>
+      <span class="tw-count">${w.count}</span>
+    </div>`).join('');
+
+  // Scroll smoothly
+  setTimeout(() => resultsWrap.scrollIntoView({behavior:'smooth', block:'start'}), 120);
 }
 
-// ── History ──
-function saveToHistory(text, data) {
+// ══════════════════════════════════════
+//  HISTORY
+// ══════════════════════════════════════
+function saveHist(text, data) {
   history.unshift({
     id: Date.now(),
-    text: text.substring(0, 200),
+    text: text.substring(0,250),
     sentiment: data.sentiment,
     score: data.score,
-    word_count: data.word_count,
-    timestamp: new Date().toLocaleString()
+    wc: data.word_count,
+    ts: new Date().toLocaleString()
   });
-  if (history.length > 50) history.pop();
-  localStorage.setItem('transcribe_history', JSON.stringify(history));
+  if (history.length > 60) history.pop();
+  try { localStorage.setItem('transcribe_history', JSON.stringify(history)); } catch(e){}
 }
 
-function renderHistory(filter = '') {
-  const filtered = history.filter(h => h.text.toLowerCase().includes(filter.toLowerCase()));
-  if (filtered.length === 0) {
-    historyList.innerHTML = `
-      <div class="empty-history">
-        <div class="empty-icon"><svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2" opacity="0.3"/><path d="M24 14v10l6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/></svg></div>
-        <p>No history yet — start by analyzing some text!</p>
-      </div>`;
+function renderHistory(filter='') {
+  const fil = history.filter(h => h.text.toLowerCase().includes(filter.toLowerCase()));
+  if (!fil.length) {
+    histList.innerHTML = `<div class="hist-empty">
+      <div class="hist-empty-art">📭</div>
+      <p>${filter ? 'No matches found' : 'No history yet'}</p>
+      <span>${filter ? 'Try a different search term' : 'Start transcribing or analyzing text'}</span>
+    </div>`;
     return;
   }
-
-  historyList.innerHTML = filtered.map(h => `
-    <div class="history-item" onclick="loadHistoryItem('${h.id}')">
-      <div class="history-badge ${h.sentiment}">${getSentimentEmoji(h.sentiment)}</div>
-      <div class="history-content">
-        <div class="history-text">${escapeHtml(h.text)}</div>
-        <div class="history-meta">
-          <span class="history-sentiment ${h.sentiment}">${capitalize(h.sentiment)}</span>
-          <span>${h.word_count} words</span>
-          <span>${h.timestamp}</span>
+  histList.innerHTML = fil.map((h,i) => `
+    <div class="hist-item" onclick="loadHist(${h.id})" style="animation-delay:${i*0.04}s">
+      <div class="hist-badge ${h.sentiment}">${sentEmoji(h.sentiment)}</div>
+      <div class="hist-body">
+        <div class="hist-text">${escHtml(h.text)}</div>
+        <div class="hist-meta">
+          <span class="hist-sent ${h.sentiment}">${cap(h.sentiment)}</span>
+          <span>${h.wc} words</span>
+          <span>${h.ts}</span>
         </div>
       </div>
-    </div>
-  `).join('');
+    </div>`).join('');
 }
 
-window.loadHistoryItem = function(id) {
-  const item = history.find(h => h.id == id);
+window.loadHist = function(id) {
+  const item = history.find(h=>h.id===id);
   if (!item) return;
-  document.querySelectorAll('.nav-pill').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  document.querySelector('[data-tab="analyze"]').classList.add('active');
+  document.querySelectorAll('.tnav').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  const ab = document.querySelector('[data-tab="analyze"]');
+  ab.classList.add('active');
+  const slider = document.querySelector('.tnav-slider');
+  const nav = ab.closest('.tab-nav');
+  const navR = nav.getBoundingClientRect();
+  const btnR = ab.getBoundingClientRect();
+  slider.style.left  = (btnR.left - navR.left - 4) + 'px';
+  slider.style.width = btnR.width + 'px';
   $('tab-analyze').classList.add('active');
   textInput.value = item.text;
-  updateWordCounter();
+  updateWC();
   analyzeText();
 };
 
-historySearch.addEventListener('input', () => renderHistory(historySearch.value));
-$('clearHistoryBtn').addEventListener('click', () => {
-  if (confirm('Clear all history?')) {
-    history = [];
-    localStorage.setItem('transcribe_history', '[]');
-    renderHistory();
-  }
+histSearch.addEventListener('input', () => renderHistory(histSearch.value));
+$('clearHistBtn').addEventListener('click', () => {
+  if (!confirm('Clear all history?')) return;
+  history = [];
+  try { localStorage.setItem('transcribe_history','[]'); } catch(e){}
+  renderHistory();
 });
 
-// ── Utilities ──
-function setLoading(btn, loading) {
-  btn.querySelector('.btn-text').classList.toggle('hidden', loading);
-  btn.querySelector('.btn-loader').classList.toggle('hidden', !loading);
+// ══════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════
+function setLoading(btn, txtId, loadId, loading) {
+  $(txtId).classList.toggle('hidden', loading);
+  $(loadId).classList.toggle('hidden', !loading);
   btn.disabled = loading;
 }
 
-function getSentimentEmoji(s) {
-  return { positive: '😊', negative: '😟', neutral: '😐' }[s] || '😐';
+function sentEmoji(s) {
+  return {positive:'😊', negative:'😟', neutral:'😐'}[s] || '😐';
 }
 
-function getEmotionIcon(e) {
-  return { joy: '😄', sadness: '😢', anger: '😠', fear: '😨', surprise: '😲', trust: '🤝' }[e] || '💭';
+function cap(s) { return s ? s.charAt(0).toUpperCase()+s.slice(1) : ''; }
+
+function fmtSize(b) {
+  if (b<1024) return b+' B';
+  if (b<1048576) return (b/1024).toFixed(1)+' KB';
+  return (b/1048576).toFixed(1)+' MB';
 }
 
-function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
 
-function formatSize(bytes) {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+function escHtml(t) {
+  return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-function escapeHtml(text) {
-  return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-let toastTimer;
+let _toastTimer;
 function showToast(msg) {
-  const toast = $('toast');
-  toast.textContent = msg;
-  toast.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+  const t = $('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(()=>t.classList.remove('show'), 3200);
 }
 
-// ── Init ──
+// Init
 renderHistory();
